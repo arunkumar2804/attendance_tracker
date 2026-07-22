@@ -38,6 +38,7 @@ let localStudents: Student[] = [
 let localAttendance: AttendanceRecord[] = [
   {
     date: getTodayFormatted(),
+    time: "09:00 AM",
     studentId: "STD001",
     present: 1,
     studentName: "Rahul Sharma",
@@ -187,6 +188,14 @@ export async function saveAttendanceToGAS(
 ): Promise<{ success: boolean; message?: string; alreadyMarked?: boolean; error?: string }> {
   const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
   const today = getTodayFormatted();
+  
+  const now = new Date();
+  let hours = now.getHours();
+  let minutes = now.getMinutes();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const timeStr = `${hours}:${minutes < 10 ? "0" + minutes : minutes} ${ampm}`;
 
   if (!url) {
     const existing = localAttendance.find((r) => r.date === today && r.studentId === studentId);
@@ -197,6 +206,7 @@ export async function saveAttendanceToGAS(
     const student = localStudents.find((s) => s.studentId === studentId);
     localAttendance.push({
       date: today,
+      time: timeStr,
       studentId,
       present: 1,
       studentName: student?.name || "Student",
@@ -222,6 +232,7 @@ export async function saveAttendanceToGAS(
         action: "saveAttendance",
         studentId,
         date: today,
+        time: timeStr,
       }),
     });
     const json = await postRes.json();
@@ -231,7 +242,7 @@ export async function saveAttendanceToGAS(
   }
 
   try {
-    const getRes = await fetch(`${url}?action=saveAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(today)}`, {
+    const getRes = await fetch(`${url}?action=saveAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(today)}&time=${encodeURIComponent(timeStr)}`, {
       cache: "no-store",
     });
     return await getRes.json();
@@ -254,6 +265,7 @@ export async function generateAbsenteesInGAS(
       if (!todayScannedIds.has(student.studentId)) {
         localAttendance.push({
           date: today,
+          time: "-",
           studentId: student.studentId,
           present: 0,
           studentName: student.name,

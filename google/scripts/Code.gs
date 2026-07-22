@@ -137,20 +137,34 @@ function handleSaveStudent(ss, data) {
  * Record attendance for student (Present = 1)
  */
 function handleSaveAttendance(ss, data) {
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Student ID", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
   const dateStr = data.date || getTodayDateString();
+  const timeStr = data.time || getTodayTimeString();
   const studentId = data.studentId;
 
   if (!studentId) {
     return jsonResponse({ success: false, error: "Missing studentId parameter" });
   }
 
+  const students = fetchAllStudents(ss);
+  let student = null;
+  for (let s of students) {
+    if (s.studentId === studentId) {
+      student = s;
+      break;
+    }
+  }
+
+  if (!student) {
+    return jsonResponse({ success: false, error: "Student not found in database." });
+  }
+
   const rows = attSheet.getDataRange().getValues();
 
-  // Check duplicate entry for today
+  // Prevent duplicate entry for today
   for (let i = 1; i < rows.length; i++) {
     const rowDate = String(rows[i][0]).trim();
-    const rowId = String(rows[i][1]).trim();
+    const rowId = String(rows[i][2]).trim(); // Student ID is index 2
     if (rowDate === dateStr && rowId === studentId) {
       return jsonResponse({
         success: false,
@@ -161,7 +175,7 @@ function handleSaveAttendance(ss, data) {
   }
 
   // Insert attendance record
-  attSheet.appendRow([dateStr, studentId, 1]);
+  attSheet.appendRow([dateStr, timeStr, studentId, student.name, student.phone, student.course, student.batch, 1]);
 
   // Recalculate percentage
   recalculateAttendancePercentage(ss, studentId);
@@ -177,22 +191,23 @@ function handleSaveAttendance(ss, data) {
  */
 function handleGenerateAbsentees(ss, data) {
   const students = fetchAllStudents(ss);
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Student ID", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
   const dateStr = data.date || getTodayDateString();
+  const timeStr = "-"; // Not applicable for absentees generated automatically
 
   const rows = attSheet.getDataRange().getValues();
   const existingTodayIds = new Set();
 
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === dateStr) {
-      existingTodayIds.add(String(rows[i][1]).trim());
+      existingTodayIds.add(String(rows[i][2]).trim()); // Student ID is index 2
     }
   }
 
   let absenteesCount = 0;
   students.forEach(function(student) {
     if (!existingTodayIds.has(student.studentId)) {
-      attSheet.appendRow([dateStr, student.studentId, 0]);
+      attSheet.appendRow([dateStr, timeStr, student.studentId, student.name, student.phone, student.course, student.batch, 0]);
       absenteesCount++;
       recalculateAttendancePercentage(ss, student.studentId);
     }
@@ -209,7 +224,7 @@ function handleGenerateAbsentees(ss, data) {
  * Automatically calculates and updates attendance percentage in Students sheet
  */
 function recalculateAttendancePercentage(ss, studentId) {
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Student ID", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
   const studSheet = getOrCreateSheet(ss, "Students", [
     "Student ID", "Name", "Phone", "Course", "Batch", "Attendance Percentage", "Face Descriptor", "Created At"
   ]);
@@ -219,9 +234,9 @@ function recalculateAttendancePercentage(ss, studentId) {
   let presentDays = 0;
 
   for (let i = 1; i < attRows.length; i++) {
-    if (String(attRows[i][1]).trim() === studentId) {
+    if (String(attRows[i][2]).trim() === studentId) {
       totalDays++;
-      if (Number(attRows[i][2]) === 1) {
+      if (Number(attRows[i][7]) === 1) { // Present is index 7
         presentDays++;
       }
     }
@@ -277,7 +292,7 @@ function fetchAllStudents(ss) {
  * Fetch all attendance logs
  */
 function fetchAllAttendance(ss) {
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Student ID", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
   const students = fetchAllStudents(ss);
   const studentMap = {};
   students.forEach(function(s) {
@@ -288,17 +303,18 @@ function fetchAllAttendance(ss) {
   const list = [];
 
   for (let i = 1; i < rows.length; i++) {
-    const sid = String(rows[i][1]);
+    const sid = String(rows[i][2]); // Student ID is index 2
     const student = studentMap[sid] || {};
 
     list.push({
       date: String(rows[i][0]),
+      time: String(rows[i][1]),
       studentId: sid,
-      present: Number(rows[i][2]),
-      studentName: student.name || "Unknown",
-      phone: student.phone || "",
-      course: student.course || "",
-      batch: student.batch || ""
+      studentName: String(rows[i][3]) || student.name || "Unknown",
+      phone: String(rows[i][4]) || student.phone || "",
+      course: String(rows[i][5]) || student.course || "",
+      batch: String(rows[i][6]) || student.batch || "",
+      present: Number(rows[i][7])
     });
   }
 
@@ -350,6 +366,20 @@ function getTodayDateString() {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const year = d.getFullYear();
   return day + "-" + month + "-" + year;
+}
+
+/**
+ * Return formatted time HH:MM AM/PM
+ */
+function getTodayTimeString() {
+  const d = new Date();
+  let hours = d.getHours();
+  let minutes = d.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  minutes = minutes < 10 ? '0' + minutes : minutes;
+  return hours + ':' + minutes + ' ' + ampm;
 }
 
 /**

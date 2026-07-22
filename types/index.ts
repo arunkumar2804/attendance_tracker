@@ -11,6 +11,7 @@ export interface Student {
 
 export interface AttendanceRecord {
   date: string; // DD-MM-YYYY
+  time?: string; // HH:MM AM/PM
   studentId: string;
   present: 1 | 0;
   studentName?: string;
