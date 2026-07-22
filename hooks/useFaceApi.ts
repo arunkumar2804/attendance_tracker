@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Student } from "@/types";
 import {
   loadFaceApiModels,
@@ -38,6 +38,18 @@ export function useFaceApi({
   const isBusyRef = useRef(false);
   const activeRef = useRef(true);
 
+  // Store latest props in a ref to avoid callback re-creation infinite loops
+  const propsRef = useRef({
+    students,
+    threshold,
+    soundEnabled,
+    onRecognized,
+  });
+
+  useEffect(() => {
+    propsRef.current = { students, threshold, soundEnabled, onRecognized };
+  }, [students, threshold, soundEnabled, onRecognized]);
+
   // Load face-api models on mount
   useEffect(() => {
     let isMounted = true;
@@ -52,14 +64,15 @@ export function useFaceApi({
     };
   }, []);
 
-  // Update matcher whenever registered students or threshold changes
+  // Update face matcher when students or threshold changes
   useEffect(() => {
     if (students.length > 0) {
       updateFaceMatcher(students, threshold);
     }
   }, [students, threshold]);
 
-  const processSingleFrame = useCallback(async () => {
+  // Main frame detection logic (reads from propsRef, zero state dependency loop)
+  const processSingleFrame = async () => {
     if (
       !videoRef.current ||
       !isPlaying ||
@@ -74,18 +87,16 @@ export function useFaceApi({
     isBusyRef.current = true;
 
     try {
-      if (scanStatus !== "cooldown" && scanStatus !== "recognized") {
-        setScanStatus("scanning");
-      }
-
       const faceData = await detectFaceAndDescriptor(videoRef.current);
 
       if (faceData) {
         const { descriptor } = faceData;
-        const match = matchFaceDescriptor(descriptor, threshold);
+        const { students: currentStudents, threshold: currentThreshold, soundEnabled: currentSound, onRecognized: currentOnRecognized } = propsRef.current;
+
+        const match = matchFaceDescriptor(descriptor, currentThreshold);
 
         if (match.studentId) {
-          const student = students.find((s) => s.studentId === match.studentId);
+          const student = currentStudents.find((s) => s.studentId === match.studentId);
           if (student) {
             const now = Date.now();
             const lastTime = cooldownMap.current.get(student.studentId) || 0;
@@ -97,11 +108,11 @@ export function useFaceApi({
               setConfidence(match.confidence);
               setScanStatus("recognized");
 
-              if (soundEnabled) {
+              if (currentSound) {
                 playSuccessChime();
               }
 
-              onRecognized(student);
+              currentOnRecognized(student);
 
               setTimeout(() => {
                 setScanStatus("cooldown");
@@ -119,9 +130,9 @@ export function useFaceApi({
     } finally {
       isBusyRef.current = false;
     }
-  }, [videoRef, isPlaying, isModelLoaded, autoScan, scanStatus, threshold, students, soundEnabled, onRecognized]);
+  };
 
-  // Non-blocking recursive setTimeout loop for ultra-smooth UI performance
+  // Continuous frame loop (runs ONLY when isPlaying, isModelLoaded, autoScan changes)
   useEffect(() => {
     activeRef.current = true;
     let timerId: NodeJS.Timeout | null = null;
@@ -130,11 +141,12 @@ export function useFaceApi({
       if (!activeRef.current) return;
       await processSingleFrame();
       if (activeRef.current) {
-        timerId = setTimeout(scheduleNextFrame, 500); // 500ms smooth polling interval
+        timerId = setTimeout(scheduleNextFrame, 600); // Stable 600ms polling
       }
     };
 
     if (isPlaying && isModelLoaded && autoScan) {
+      setScanStatus("scanning");
       scheduleNextFrame();
     }
 
@@ -142,7 +154,7 @@ export function useFaceApi({
       activeRef.current = false;
       if (timerId) clearTimeout(timerId);
     };
-  }, [isPlaying, isModelLoaded, autoScan, processSingleFrame]);
+  }, [isPlaying, isModelLoaded, autoScan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     isModelLoaded,

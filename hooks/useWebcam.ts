@@ -8,18 +8,6 @@ export function useWebcam(resolution: string = "1280x720") {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const getWidthHeight = useCallback(() => {
-    switch (resolution) {
-      case "1920x1080":
-        return { width: 1920, height: 1080 };
-      case "640x480":
-        return { width: 640, height: 480 };
-      case "1280x720":
-      default:
-        return { width: 1280, height: 720 };
-    }
-  }, [resolution]);
-
   const stopStream = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -35,7 +23,15 @@ export function useWebcam(resolution: string = "1280x720") {
     stopStream();
     setError(null);
 
-    const { width, height } = getWidthHeight();
+    let width = 1280;
+    let height = 720;
+    if (resolution === "1920x1080") {
+      width = 1920;
+      height = 1080;
+    } else if (resolution === "640x480") {
+      width = 640;
+      height = 480;
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -51,12 +47,15 @@ export function useWebcam(resolution: string = "1280x720") {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().then(() => {
-            setIsPlaying(true);
-          }).catch((err) => {
-            console.error("Video play error:", err);
-            setError("Failed to start video playback.");
-          });
+          videoRef.current
+            ?.play()
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch((err) => {
+              console.error("Video play error:", err);
+              setError("Failed to start video playback.");
+            });
         };
       }
     } catch (err) {
@@ -64,14 +63,14 @@ export function useWebcam(resolution: string = "1280x720") {
       setError("Webcam access denied or unavailable. Please check permissions.");
       setIsPlaying(false);
     }
-  }, [getWidthHeight, stopStream]);
+  }, [resolution, stopStream]);
 
   useEffect(() => {
     startStream();
     return () => {
       stopStream();
     };
-  }, [startStream, stopStream]);
+  }, [resolution]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     videoRef,
