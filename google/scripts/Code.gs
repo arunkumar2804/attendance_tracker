@@ -159,7 +159,7 @@ function handleSaveAttendance(ss, data) {
     return jsonResponse({ success: false, error: "Student not found in database." });
   }
 
-  const rows = attSheet.getDataRange().getValues();
+  const rows = attSheet.getDataRange().getDisplayValues();
 
   // Prevent duplicate entry for today
   for (let i = 1; i < rows.length; i++) {
@@ -195,7 +195,7 @@ function handleGenerateAbsentees(ss, data) {
   const dateStr = data.date || getTodayDateString();
   const timeStr = "-"; // Not applicable for absentees generated automatically
 
-  const rows = attSheet.getDataRange().getValues();
+  const rows = attSheet.getDataRange().getDisplayValues();
   const existingTodayIds = new Set();
 
   for (let i = 1; i < rows.length; i++) {
@@ -229,7 +229,7 @@ function recalculateAttendancePercentage(ss, studentId) {
     "Student ID", "Name", "Phone", "Course", "Batch", "Attendance Percentage", "Face Descriptor", "Created At"
   ]);
 
-  const attRows = attSheet.getDataRange().getValues();
+  const attRows = attSheet.getDataRange().getDisplayValues();
   let totalDays = 0;
   let presentDays = 0;
 
@@ -244,7 +244,7 @@ function recalculateAttendancePercentage(ss, studentId) {
 
   const percentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 1000) / 10 : 0;
 
-  const studRows = studSheet.getDataRange().getValues();
+  const studRows = studSheet.getDataRange().getDisplayValues();
   for (let j = 1; j < studRows.length; j++) {
     if (String(studRows[j][0]).trim() === studentId) {
       studSheet.getRange(j + 1, 6).setValue(percentage);
@@ -262,7 +262,7 @@ function fetchAllStudents(ss) {
   const sheet = getOrCreateSheet(ss, "Students", [
     "Student ID", "Name", "Phone", "Course", "Batch", "Attendance Percentage", "Face Descriptor", "Created At"
   ]);
-  const rows = sheet.getDataRange().getValues();
+  const rows = sheet.getDataRange().getDisplayValues();
   const students = [];
 
   for (let i = 1; i < rows.length; i++) {
@@ -299,7 +299,7 @@ function fetchAllAttendance(ss) {
     studentMap[s.studentId] = s;
   });
 
-  const rows = attSheet.getDataRange().getValues();
+  const rows = attSheet.getDataRange().getDisplayValues();
   const list = [];
 
   for (let i = 1; i < rows.length; i++) {
