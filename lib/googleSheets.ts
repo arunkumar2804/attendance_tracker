@@ -48,7 +48,7 @@ let localAttendance: AttendanceRecord[] = [
 ];
 
 export async function fetchStudentsFromGAS(gasUrl?: string): Promise<Student[]> {
-  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
+  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
 
   if (!url) {
     return localStudents;
@@ -68,7 +68,7 @@ export async function fetchStudentsFromGAS(gasUrl?: string): Promise<Student[]> 
 }
 
 export async function fetchAttendanceFromGAS(gasUrl?: string): Promise<AttendanceRecord[]> {
-  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
+  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
 
   if (!url) {
     return localAttendance;
@@ -88,7 +88,7 @@ export async function fetchAttendanceFromGAS(gasUrl?: string): Promise<Attendanc
 }
 
 export async function fetchStatsFromGAS(gasUrl?: string): Promise<AttendanceStats> {
-  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
+  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
 
   if (!url) {
     const total = localStudents.length;
@@ -131,7 +131,7 @@ export async function saveStudentToGAS(
   studentData: { name: string; phone: string; course: string; batch: string; faceDescriptor: number[] },
   gasUrl?: string
 ): Promise<{ success: boolean; student?: Student; error?: string }> {
-  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
+  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
 
   if (!url) {
     const exists = localStudents.some((s) => s.phone.trim() === studentData.phone.trim());
@@ -185,7 +185,7 @@ export async function saveAttendanceToGAS(
   studentId: string,
   gasUrl?: string
 ): Promise<{ success: boolean; message?: string; alreadyMarked?: boolean; error?: string }> {
-  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
+  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
   const today = getTodayFormatted();
 
   if (!url) {
@@ -243,7 +243,7 @@ export async function saveAttendanceToGAS(
 export async function generateAbsenteesInGAS(
   gasUrl?: string
 ): Promise<{ success: boolean; absenteesCount?: number; message?: string; error?: string }> {
-  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
+  const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL || "https://script.google.com/macros/s/AKfycbwrdYUrx6mg5DxHqQM64Jx9qeV-cosOeA0kKgYChzaBR9CxZYOaBRJYrrezWKTD23kGOw/exec";
   const today = getTodayFormatted();
 
   if (!url) {

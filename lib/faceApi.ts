@@ -27,6 +27,21 @@ export async function getFaceApi() {
   return faceapi;
 }
 
+async function warmupModel(api: any) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 224;
+    canvas.height = 224;
+    // Run dummy inference to compile WebGL shaders in background and prevent UI freeze later
+    await api
+      .detectSingleFace(canvas as any, new api.TinyFaceDetectorOptions({ inputSize: 224 }))
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+  } catch (e) {
+    console.warn("Warmup failed, skipping:", e);
+  }
+}
+
 export async function loadFaceApiModels(): Promise<boolean> {
   if (isModelsLoaded) return true;
   const api = await getFaceApi();
@@ -41,6 +56,7 @@ export async function loadFaceApiModels(): Promise<boolean> {
         api.nets.faceRecognitionNet.loadFromUri(MODEL_URL_LOCAL),
       ]);
       isModelsLoaded = true;
+      await warmupModel(api);
       return true;
     } catch {
       await Promise.all([
@@ -49,6 +65,7 @@ export async function loadFaceApiModels(): Promise<boolean> {
         api.nets.faceRecognitionNet.loadFromUri(MODEL_URL_CDN),
       ]);
       isModelsLoaded = true;
+      await warmupModel(api);
       return true;
     }
   } catch (err) {
@@ -61,6 +78,7 @@ export async function loadFaceApiModels(): Promise<boolean> {
         api.nets.faceRecognitionNet.loadFromUri(MODEL_URL_CDN),
       ]);
       isModelsLoaded = true;
+      await warmupModel(api);
       return true;
     } catch (e) {
       console.error("Secondary model loading error:", e);
