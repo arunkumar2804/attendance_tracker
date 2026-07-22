@@ -10,7 +10,7 @@ let localStudents: Student[] = [
     course: "Computer Science",
     batch: "2024-A",
     attendancePercentage: 85.5,
-    faceDescriptor: [], // Empty for initial mock or filled upon scan
+    faceDescriptor: [],
     createdAt: new Date().toISOString(),
   },
   {
@@ -134,7 +134,6 @@ export async function saveStudentToGAS(
   const url = gasUrl || process.env.NEXT_PUBLIC_GAS_WEB_APP_URL;
 
   if (!url) {
-    // Local duplicate check
     const exists = localStudents.some((s) => s.phone.trim() === studentData.phone.trim());
     if (exists) {
       return { success: false, error: "Student with this phone number already registered." };
@@ -156,17 +155,27 @@ export async function saveStudentToGAS(
     return { success: true, student: newStudent };
   }
 
+  // Dual POST & GET query payload fallback for 100% Google Apps Script reliability
   try {
-    const res = await fetch(url, {
+    const postRes = await fetch(`${url}?action=saveStudent`, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" }, // GAS CORS standard
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         action: "saveStudent",
         ...studentData,
       }),
     });
-    const json = await res.json();
-    return json;
+    const json = await postRes.json();
+    if (json.success || json.error) return json;
+  } catch (err) {
+    console.warn("GAS POST saveStudent error, trying GET query fallback:", err);
+  }
+
+  // Fallback GET request with encoded payload
+  try {
+    const payloadParam = encodeURIComponent(JSON.stringify(studentData));
+    const getRes = await fetch(`${url}?action=saveStudent&payload=${payloadParam}`, { cache: "no-store" });
+    return await getRes.json();
   } catch (err) {
     return { success: false, error: (err as Error).toString() };
   }
@@ -196,7 +205,6 @@ export async function saveAttendanceToGAS(
       batch: student?.batch || "",
     });
 
-    // Update local percentage
     if (student) {
       const studentRecords = localAttendance.filter((r) => r.studentId === studentId);
       const presentCount = studentRecords.filter((r) => r.present === 1).length;
@@ -207,7 +215,7 @@ export async function saveAttendanceToGAS(
   }
 
   try {
-    const res = await fetch(url, {
+    const postRes = await fetch(`${url}?action=saveAttendance`, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
@@ -216,7 +224,17 @@ export async function saveAttendanceToGAS(
         date: today,
       }),
     });
-    return await res.json();
+    const json = await postRes.json();
+    if (json.success || json.message || json.alreadyMarked) return json;
+  } catch (err) {
+    console.warn("GAS POST saveAttendance error, trying GET query fallback:", err);
+  }
+
+  try {
+    const getRes = await fetch(`${url}?action=saveAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(today)}`, {
+      cache: "no-store",
+    });
+    return await getRes.json();
   } catch (err) {
     return { success: false, error: (err as Error).toString() };
   }
@@ -245,7 +263,6 @@ export async function generateAbsenteesInGAS(
         });
         count++;
 
-        // Update percentage
         const studentRecords = localAttendance.filter((r) => r.studentId === student.studentId);
         const presentCount = studentRecords.filter((r) => r.present === 1).length;
         student.attendancePercentage = Math.round((presentCount / studentRecords.length) * 100);
@@ -260,7 +277,7 @@ export async function generateAbsenteesInGAS(
   }
 
   try {
-    const res = await fetch(url, {
+    const postRes = await fetch(`${url}?action=generateAbsentees`, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
@@ -268,7 +285,15 @@ export async function generateAbsenteesInGAS(
         date: today,
       }),
     });
-    return await res.json();
+    const json = await postRes.json();
+    if (json.success) return json;
+  } catch (err) {
+    console.warn("GAS POST generateAbsentees error, trying GET query fallback:", err);
+  }
+
+  try {
+    const getRes = await fetch(`${url}?action=generateAbsentees&date=${encodeURIComponent(today)}`, { cache: "no-store" });
+    return await getRes.json();
   } catch (err) {
     return { success: false, error: (err as Error).toString() };
   }

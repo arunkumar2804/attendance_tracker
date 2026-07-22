@@ -12,12 +12,29 @@ function doGet(e) {
     const action = e.parameter.action || "getStudents";
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
+    let payloadData = {};
+    if (e.parameter.payload) {
+      try {
+        payloadData = JSON.parse(e.parameter.payload);
+      } catch (err) {
+        payloadData = e.parameter;
+      }
+    } else {
+      payloadData = e.parameter;
+    }
+
     if (action === "getStudents") {
       return jsonResponse({ success: true, data: fetchAllStudents(ss) });
     } else if (action === "getAttendance") {
       return jsonResponse({ success: true, data: fetchAllAttendance(ss) });
     } else if (action === "getStats") {
       return jsonResponse({ success: true, data: calculateStats(ss) });
+    } else if (action === "saveStudent") {
+      return handleSaveStudent(ss, payloadData);
+    } else if (action === "saveAttendance") {
+      return handleSaveAttendance(ss, payloadData);
+    } else if (action === "generateAbsentees") {
+      return handleGenerateAbsentees(ss, payloadData);
     } else {
       return jsonResponse({ success: false, error: "Invalid action parameter" });
     }
@@ -28,8 +45,18 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    const postData = JSON.parse(e.postData.contents || "{}");
-    const action = postData.action;
+    let postData = {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        postData = JSON.parse(e.postData.contents);
+      } catch (err) {
+        postData = e.parameter || {};
+      }
+    } else {
+      postData = e.parameter || {};
+    }
+
+    const action = postData.action || e.parameter.action;
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
     if (action === "saveStudent") {
@@ -69,7 +96,17 @@ function handleSaveStudent(ss, data) {
 
   const nextId = "STD" + String(rows.length).padStart(3, "0");
   const createdAt = new Date().toISOString();
-  const descriptorJson = JSON.stringify(data.faceDescriptor || []);
+  
+  let descriptor = data.faceDescriptor || [];
+  if (typeof descriptor === "string") {
+    try {
+      descriptor = JSON.parse(descriptor);
+    } catch (e) {
+      descriptor = [];
+    }
+  }
+  
+  const descriptorJson = JSON.stringify(descriptor);
 
   sheet.appendRow([
     nextId,
@@ -89,7 +126,7 @@ function handleSaveStudent(ss, data) {
     course: data.course,
     batch: data.batch,
     attendancePercentage: 0,
-    faceDescriptor: data.faceDescriptor || [],
+    faceDescriptor: descriptor,
     createdAt: createdAt
   };
 
@@ -103,6 +140,10 @@ function handleSaveAttendance(ss, data) {
   const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Student ID", "Present"]);
   const dateStr = data.date || getTodayDateString();
   const studentId = data.studentId;
+
+  if (!studentId) {
+    return jsonResponse({ success: false, error: "Missing studentId parameter" });
+  }
 
   const rows = attSheet.getDataRange().getValues();
 
