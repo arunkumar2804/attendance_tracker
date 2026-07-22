@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Student } from "@/types";
+import { Student, AttendanceRecord } from "@/types";
 import {
   loadFaceApiModels,
   detectFaceAndDescriptor,
@@ -9,11 +9,13 @@ import {
   matchFaceDescriptor,
 } from "@/lib/faceApi";
 import { playSuccessChime } from "@/lib/audio";
+import { getTodayFormatted } from "@/lib/utils";
 
 interface UseFaceApiProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   students: Student[];
+  attendance: AttendanceRecord[];
   threshold: number;
   autoScan: boolean;
   soundEnabled: boolean;
@@ -24,13 +26,14 @@ export function useFaceApi({
   videoRef,
   isPlaying,
   students,
+  attendance,
   threshold,
   autoScan,
   soundEnabled,
   onRecognized,
 }: UseFaceApiProps) {
   const [isModelLoaded, setIsModelLoaded] = useState(false);
-  const [scanStatus, setScanStatus] = useState<"loading" | "scanning" | "recognized" | "cooldown" | "idle">("loading");
+  const [scanStatus, setScanStatus] = useState<"loading" | "scanning" | "recognized" | "already_marked" | "cooldown" | "idle">("loading");
   const [lastRecognizedStudent, setLastRecognizedStudent] = useState<Student | null>(null);
   const [confidence, setConfidence] = useState<number>(0);
 
@@ -41,14 +44,15 @@ export function useFaceApi({
   // Store latest props in a ref to avoid callback re-creation infinite loops
   const propsRef = useRef({
     students,
+    attendance,
     threshold,
     soundEnabled,
     onRecognized,
   });
 
   useEffect(() => {
-    propsRef.current = { students, threshold, soundEnabled, onRecognized };
-  }, [students, threshold, soundEnabled, onRecognized]);
+    propsRef.current = { students, attendance, threshold, soundEnabled, onRecognized };
+  }, [students, attendance, threshold, soundEnabled, onRecognized]);
 
   // Load face-api models on mount
   useEffect(() => {
@@ -91,7 +95,7 @@ export function useFaceApi({
 
       if (faceData) {
         const { descriptor } = faceData;
-        const { students: currentStudents, threshold: currentThreshold, soundEnabled: currentSound, onRecognized: currentOnRecognized } = propsRef.current;
+        const { students: currentStudents, attendance: currentAttendance, threshold: currentThreshold, soundEnabled: currentSound, onRecognized: currentOnRecognized } = propsRef.current;
 
         const match = matchFaceDescriptor(descriptor, currentThreshold);
 
@@ -101,26 +105,41 @@ export function useFaceApi({
             const now = Date.now();
             const lastTime = cooldownMap.current.get(student.studentId) || 0;
 
-            // 10 second cooldown per student
-            if (now - lastTime > 10000) {
+            // 15 second cooldown per student
+            if (now - lastTime > 15000) {
               cooldownMap.current.set(student.studentId, now);
               setLastRecognizedStudent(student);
               setConfidence(match.confidence);
-              setScanStatus("recognized");
+              
+              const todayStr = getTodayFormatted();
+              const isAlreadyMarked = currentAttendance.some(
+                (r) => r.studentId === student.studentId && r.date === todayStr && r.present === 1
+              );
 
-              if (currentSound) {
-                playSuccessChime();
-              }
-
-              currentOnRecognized(student);
-
-              setTimeout(() => {
-                setScanStatus("cooldown");
+              if (isAlreadyMarked) {
+                setScanStatus("already_marked");
                 setTimeout(() => {
-                  setScanStatus("scanning");
-                  setLastRecognizedStudent(null);
+                  setScanStatus("cooldown");
+                  setTimeout(() => {
+                    setScanStatus("scanning");
+                    setLastRecognizedStudent(null);
+                  }, 3000);
                 }, 3000);
-              }, 2500);
+              } else {
+                setScanStatus("recognized");
+                if (currentSound) {
+                  playSuccessChime();
+                }
+                currentOnRecognized(student);
+
+                setTimeout(() => {
+                  setScanStatus("cooldown");
+                  setTimeout(() => {
+                    setScanStatus("scanning");
+                    setLastRecognizedStudent(null);
+                  }, 3000);
+                }, 2500);
+              }
             }
           }
         }

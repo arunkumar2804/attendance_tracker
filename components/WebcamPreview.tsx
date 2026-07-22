@@ -10,7 +10,7 @@ interface WebcamPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   error: string | null;
-  scanStatus: "loading" | "scanning" | "recognized" | "cooldown" | "idle";
+  scanStatus: "loading" | "scanning" | "recognized" | "already_marked" | "cooldown" | "idle";
   lastRecognizedStudent: Student | null;
   confidence: number;
   onRefreshStream: () => void;
@@ -71,6 +71,12 @@ export const WebcamPreview: React.FC<WebcamPreviewProps> = ({
             Recognized ({confidence}% Match)
           </Badge>
         )}
+        {scanStatus === "already_marked" && (
+          <Badge variant="warning" className="gap-1.5 py-1.5 px-3 bg-amber-950/90 border-amber-500/40 text-amber-200 text-sm">
+            <AlertCircle className="w-4 h-4 text-amber-400" />
+            Already Marked
+          </Badge>
+        )}
         {scanStatus === "cooldown" && (
           <Badge variant="neutral" className="gap-1.5 py-1 px-3 bg-slate-900/80 border-slate-700 text-slate-300">
             Processing Cooldown...
@@ -111,6 +117,26 @@ export const WebcamPreview: React.FC<WebcamPreviewProps> = ({
           <div className="hidden sm:block text-right">
             <span className="text-2xl font-extrabold text-emerald-400">100%</span>
             <p className="text-[10px] text-slate-400 uppercase">Present Today</p>
+          </div>
+        </div>
+      )}
+
+      {/* Already Marked Overlay Notification */}
+      {scanStatus === "already_marked" && lastRecognizedStudent && (
+        <div className="absolute inset-x-4 bottom-4 z-30 p-4 rounded-2xl bg-gradient-to-r from-amber-950/95 via-slate-900/95 to-amber-950/95 border border-amber-500/50 shadow-2xl backdrop-blur-xl animate-pop-in flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/20">
+              <AlertCircle className="w-7 h-7" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+                Attendance Already Marked
+              </p>
+              <h4 className="text-lg font-bold text-white">Attendance already marked for {lastRecognizedStudent.name}</h4>
+              <p className="text-xs text-slate-300">
+                {lastRecognizedStudent.studentId} was already marked present today.
+              </p>
+            </div>
           </div>
         </div>
       )}
