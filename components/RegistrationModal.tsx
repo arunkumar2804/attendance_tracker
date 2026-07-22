@@ -21,7 +21,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   onRegisterSuccess,
   existingStudents,
 }) => {
-  const [step, setStep] = useState<"details" | "capture" | "review">("details");
+  const [step, setStep] = useState<"details" | "capture">("details");
   const [formData, setFormData] = useState<RegistrationFormData>({
     name: "",
     phone: "",
@@ -42,6 +42,9 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -54,7 +57,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {});
       }
     } catch (err) {
       console.error("Camera start error in registration modal:", err);
@@ -99,27 +102,29 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
     setIsCapturing(true);
     setCaptureError(null);
 
-    const faceData = await detectFaceAndDescriptor(videoRef.current);
-    if (faceData) {
-      setCapturedDescriptors((prev) => [...prev, faceData.descriptor]);
-    } else {
-      setCaptureError("No face detected! Make sure your face is clearly visible in center frame.");
+    try {
+      const faceData = await detectFaceAndDescriptor(videoRef.current);
+      if (faceData) {
+        setCapturedDescriptors((prev) => [...prev, faceData.descriptor]);
+      } else {
+        setCaptureError("No face detected! Make sure your face is clearly visible in center frame.");
+      }
+    } catch (e) {
+      console.warn("Sample capture error:", e);
+    } finally {
+      setIsCapturing(false);
     }
-
-    setIsCapturing(false);
   };
 
   const autoCaptureSamples = async () => {
+    if (isCapturing || !videoRef.current) return;
     setIsCapturing(true);
     setCaptureError(null);
 
     let count = capturedDescriptors.length;
-    const interval = setInterval(async () => {
-      if (count >= 5 || !videoRef.current) {
-        clearInterval(interval);
-        setIsCapturing(false);
-        return;
-      }
+
+    for (let i = 0; i < 5; i++) {
+      if (count >= 5 || !videoRef.current) break;
       const faceData = await detectFaceAndDescriptor(videoRef.current);
       if (faceData) {
         setCapturedDescriptors((prev) => {
@@ -128,7 +133,11 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
           return next;
         });
       }
-    }, 800);
+      // Non-blocking sleep 600ms
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+
+    setIsCapturing(false);
   };
 
   const handleResetModal = () => {

@@ -34,9 +34,9 @@ export function useFaceApi({
   const [lastRecognizedStudent, setLastRecognizedStudent] = useState<Student | null>(null);
   const [confidence, setConfidence] = useState<number>(0);
 
-  // Cooldown map to prevent spamming duplicate attendance requests for the same student
   const cooldownMap = useRef<Map<string, number>>(new Map());
-  const isScanningRef = useRef(false);
+  const isBusyRef = useRef(false);
+  const activeRef = useRef(true);
 
   // Load face-api models on mount
   useEffect(() => {
@@ -59,66 +59,90 @@ export function useFaceApi({
     }
   }, [students, threshold]);
 
-  const processFrame = useCallback(async () => {
-    if (!videoRef.current || !isPlaying || !isModelLoaded || !autoScan || isScanningRef.current) {
+  const processSingleFrame = useCallback(async () => {
+    if (
+      !videoRef.current ||
+      !isPlaying ||
+      !isModelLoaded ||
+      !autoScan ||
+      isBusyRef.current ||
+      !activeRef.current
+    ) {
       return;
     }
 
-    isScanningRef.current = true;
-    if (scanStatus !== "cooldown" && scanStatus !== "recognized") {
-      setScanStatus("scanning");
-    }
+    isBusyRef.current = true;
 
-    const faceData = await detectFaceAndDescriptor(videoRef.current);
+    try {
+      if (scanStatus !== "cooldown" && scanStatus !== "recognized") {
+        setScanStatus("scanning");
+      }
 
-    if (faceData) {
-      const { descriptor } = faceData;
-      const match = matchFaceDescriptor(descriptor, threshold);
+      const faceData = await detectFaceAndDescriptor(videoRef.current);
 
-      if (match.studentId) {
-        const student = students.find((s) => s.studentId === match.studentId);
-        if (student) {
-          const now = Date.now();
-          const lastTime = cooldownMap.current.get(student.studentId) || 0;
+      if (faceData) {
+        const { descriptor } = faceData;
+        const match = matchFaceDescriptor(descriptor, threshold);
 
-          // 10 second cooldown per student
-          if (now - lastTime > 10000) {
-            cooldownMap.current.set(student.studentId, now);
-            setLastRecognizedStudent(student);
-            setConfidence(match.confidence);
-            setScanStatus("recognized");
+        if (match.studentId) {
+          const student = students.find((s) => s.studentId === match.studentId);
+          if (student) {
+            const now = Date.now();
+            const lastTime = cooldownMap.current.get(student.studentId) || 0;
 
-            if (soundEnabled) {
-              playSuccessChime();
-            }
+            // 10 second cooldown per student
+            if (now - lastTime > 10000) {
+              cooldownMap.current.set(student.studentId, now);
+              setLastRecognizedStudent(student);
+              setConfidence(match.confidence);
+              setScanStatus("recognized");
 
-            onRecognized(student);
+              if (soundEnabled) {
+                playSuccessChime();
+              }
 
-            setTimeout(() => {
-              setScanStatus("cooldown");
+              onRecognized(student);
+
               setTimeout(() => {
-                setScanStatus("scanning");
-                setLastRecognizedStudent(null);
-              }, 3000);
-            }, 2500);
+                setScanStatus("cooldown");
+                setTimeout(() => {
+                  setScanStatus("scanning");
+                  setLastRecognizedStudent(null);
+                }, 3000);
+              }, 2500);
+            }
           }
         }
       }
+    } catch (err) {
+      console.warn("Frame detection error:", err);
+    } finally {
+      isBusyRef.current = false;
     }
-
-    isScanningRef.current = false;
   }, [videoRef, isPlaying, isModelLoaded, autoScan, scanStatus, threshold, students, soundEnabled, onRecognized]);
 
-  // Main recognition loop interval
+  // Non-blocking recursive setTimeout loop for ultra-smooth UI performance
   useEffect(() => {
-    if (!isPlaying || !isModelLoaded || !autoScan) return;
+    activeRef.current = true;
+    let timerId: NodeJS.Timeout | null = null;
 
-    const interval = setInterval(() => {
-      processFrame();
-    }, 700);
+    const scheduleNextFrame = async () => {
+      if (!activeRef.current) return;
+      await processSingleFrame();
+      if (activeRef.current) {
+        timerId = setTimeout(scheduleNextFrame, 500); // 500ms smooth polling interval
+      }
+    };
 
-    return () => clearInterval(interval);
-  }, [isPlaying, isModelLoaded, autoScan, processFrame]);
+    if (isPlaying && isModelLoaded && autoScan) {
+      scheduleNextFrame();
+    }
+
+    return () => {
+      activeRef.current = false;
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [isPlaying, isModelLoaded, autoScan, processSingleFrame]);
 
   return {
     isModelLoaded,

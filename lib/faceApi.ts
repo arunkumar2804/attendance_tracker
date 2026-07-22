@@ -5,13 +5,24 @@ let isModelsLoaded = false;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let faceMatcher: any = null;
 
-const MODEL_URL_LOCAL = "/models";
 const MODEL_URL_CDN = "https://vladmandic.github.io/face-api/model/";
+const MODEL_URL_LOCAL = "/models";
 
 export async function getFaceApi() {
   if (typeof window === "undefined") return null;
   if (!faceapi) {
     faceapi = await import("@vladmandic/face-api");
+    // Enable TFJS WebGL optimizations if available
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tf = (faceapi as any).tf;
+    if (tf && typeof tf.setBackend === "function") {
+      try {
+        await tf.setBackend("webgl");
+        await tf.ready();
+      } catch {
+        console.warn("WebGL backend fallback");
+      }
+    }
   }
   return faceapi;
 }
@@ -22,9 +33,10 @@ export async function loadFaceApiModels(): Promise<boolean> {
   if (!api) return false;
 
   try {
+    // Load lightweight TinyFaceDetector, 68 Landmarks, and Face Recognition Net
     try {
       await Promise.all([
-        api.nets.ssdMobilenetv1.loadFromUri(MODEL_URL_LOCAL),
+        api.nets.tinyFaceDetector.loadFromUri(MODEL_URL_LOCAL),
         api.nets.faceLandmark68Net.loadFromUri(MODEL_URL_LOCAL),
         api.nets.faceRecognitionNet.loadFromUri(MODEL_URL_LOCAL),
       ]);
@@ -32,7 +44,7 @@ export async function loadFaceApiModels(): Promise<boolean> {
       return true;
     } catch {
       await Promise.all([
-        api.nets.ssdMobilenetv1.loadFromUri(MODEL_URL_CDN),
+        api.nets.tinyFaceDetector.loadFromUri(MODEL_URL_CDN),
         api.nets.faceLandmark68Net.loadFromUri(MODEL_URL_CDN),
         api.nets.faceRecognitionNet.loadFromUri(MODEL_URL_CDN),
       ]);
@@ -41,19 +53,33 @@ export async function loadFaceApiModels(): Promise<boolean> {
     }
   } catch (err) {
     console.error("Failed to load face-api models:", err);
-    return false;
+    // Secondary fallback to ssdMobilenetv1 if tiny detector misses
+    try {
+      await Promise.all([
+        api.nets.ssdMobilenetv1.loadFromUri(MODEL_URL_CDN),
+        api.nets.faceLandmark68Net.loadFromUri(MODEL_URL_CDN),
+        api.nets.faceRecognitionNet.loadFromUri(MODEL_URL_CDN),
+      ]);
+      isModelsLoaded = true;
+      return true;
+    } catch (e) {
+      console.error("Secondary model loading error:", e);
+      return false;
+    }
   }
 }
 
 /**
- * Detect a single face in a video element and extract landmark & 128D descriptor
+ * Detect a single face in a video element smoothly without freezing UI
  */
 export async function detectFaceAndDescriptor(
   videoElement: HTMLVideoElement
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ descriptor: Float32Array; detection: any; landmarks: any } | null> {
   const api = await getFaceApi();
-  if (!api) return null;
+  if (!api || !videoElement || videoElement.paused || videoElement.ended || videoElement.readyState < 2) {
+    return null;
+  }
 
   if (!isModelsLoaded) {
     const loaded = await loadFaceApiModels();
@@ -61,20 +87,29 @@ export async function detectFaceAndDescriptor(
   }
 
   try {
-    const result = await api
-      .detectSingleFace(videoElement, new api.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+    // Use TinyFaceDetector with inputSize 224 for ultra-fast, smooth inference
+    let detection = await api
+      .detectSingleFace(videoElement, new api.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
       .withFaceLandmarks()
       .withFaceDescriptor();
 
-    if (!result) return null;
+    // Fallback to SSD Mobilenet if Tiny Face Detector returns null
+    if (!detection && api.nets.ssdMobilenetv1.isLoaded) {
+      detection = await api
+        .detectSingleFace(videoElement, new api.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+    }
+
+    if (!detection) return null;
 
     return {
-      descriptor: result.descriptor,
-      detection: result.detection,
-      landmarks: result.landmarks,
+      descriptor: detection.descriptor,
+      detection: detection.detection,
+      landmarks: detection.landmarks,
     };
   } catch (err) {
-    console.warn("Face detection error:", err);
+    console.warn("Face detection frame error:", err);
     return null;
   }
 }
@@ -100,7 +135,7 @@ export function computeAverageDescriptor(descriptors: Float32Array[] | number[][
 }
 
 /**
- * Update the global FaceMatcher instance with all registered students
+ * Update global FaceMatcher instance with registered students
  */
 export async function updateFaceMatcher(students: Student[], maxDistance: number = 0.55): Promise<void> {
   const api = await getFaceApi();
