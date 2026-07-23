@@ -196,8 +196,8 @@ function handleSaveAttendance(ss, data) {
     });
   }
 
-  // Mark present (store time)
-  attSheet.getRange(rowIndex + 1, colIndex + 1).setValue("'" + timeStr);
+  // Mark present (store 1)
+  attSheet.getRange(rowIndex + 1, colIndex + 1).setValue(1);
 
   // Recalculate percentage
   recalculateAttendancePercentage(ss, studentId);
@@ -384,7 +384,7 @@ function fetchAllAttendance(ss) {
 
       if (cellVal) {
         const present = cellVal === "A" ? 0 : 1;
-        const timeVal = cellVal === "A" ? "-" : cellVal.replace(/^'/, '');
+        const timeVal = "-"; // Time is no longer stored
 
         list.push({
           date: dateStr,
@@ -433,6 +433,9 @@ function getOrCreateSheet(ss, sheetName, headers) {
   let sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+  } else if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
   }
