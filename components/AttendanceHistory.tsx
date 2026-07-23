@@ -43,9 +43,10 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({
   });
 
   const handleExportCsv = () => {
-    const headers = ["Date", "Student ID", "Name", "Course", "Batch", "Status"];
+    const headers = ["Date", "Time", "Student ID", "Name", "Course", "Batch", "Status"];
     const rows = filteredRecords.map((r) => [
       r.date,
+      r.time || "-",
       r.studentId,
       r.studentName || "N/A",
       r.course || "N/A",
@@ -143,6 +144,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({
           <thead className="bg-slate-100/70 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200 dark:border-slate-800">
             <tr>
               <th className="px-4 py-3">Date</th>
+              <th className="px-4 py-3">Time</th>
               <th className="px-4 py-3">Student ID</th>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Course</th>
@@ -153,7 +155,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
             {filteredRecords.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-400">
                   No attendance history logs found.
                 </td>
               </tr>
@@ -162,6 +164,9 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({
                 <tr key={i} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="px-4 py-3 font-mono font-medium text-slate-900 dark:text-white">
                     {r.date}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {r.time || "-"}
                   </td>
                   <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300">
                     {r.studentId}

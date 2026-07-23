@@ -163,7 +163,7 @@ function handleSaveAttendance(ss, data) {
 
   // Prevent duplicate entry for today
   for (let i = 1; i < rows.length; i++) {
-    const rowDate = String(rows[i][0]).trim();
+    const rowDate = normalizeDateString(rows[i][0]);
     const rowId = String(rows[i][2]).trim(); // Student ID is index 2
     if (rowDate === dateStr && rowId === studentId) {
       return jsonResponse({
@@ -175,7 +175,7 @@ function handleSaveAttendance(ss, data) {
   }
 
   // Insert attendance record
-  attSheet.appendRow([dateStr, timeStr, studentId, student.name, student.phone, student.course, student.batch, 1]);
+  attSheet.appendRow(["'" + dateStr, "'" + timeStr, studentId, student.name, student.phone, student.course, student.batch, 1]);
 
   // Recalculate percentage
   recalculateAttendancePercentage(ss, studentId);
@@ -199,7 +199,7 @@ function handleGenerateAbsentees(ss, data) {
   const existingTodayIds = new Set();
 
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === dateStr) {
+    if (normalizeDateString(rows[i][0]) === dateStr) {
       existingTodayIds.add(String(rows[i][2]).trim()); // Student ID is index 2
     }
   }
@@ -207,7 +207,7 @@ function handleGenerateAbsentees(ss, data) {
   let absenteesCount = 0;
   students.forEach(function(student) {
     if (!existingTodayIds.has(student.studentId)) {
-      attSheet.appendRow([dateStr, timeStr, student.studentId, student.name, student.phone, student.course, student.batch, 0]);
+      attSheet.appendRow(["'" + dateStr, "'" + timeStr, student.studentId, student.name, student.phone, student.course, student.batch, 0]);
       absenteesCount++;
       recalculateAttendancePercentage(ss, student.studentId);
     }
@@ -307,8 +307,8 @@ function fetchAllAttendance(ss) {
     const student = studentMap[sid] || {};
 
     list.push({
-      date: String(rows[i][0]),
-      time: String(rows[i][1]),
+      date: normalizeDateString(rows[i][0]),
+      time: String(rows[i][1]).replace(/^'/, ''),
       studentId: sid,
       studentName: String(rows[i][3]) || student.name || "Unknown",
       phone: String(rows[i][4]) || student.phone || "",
@@ -388,4 +388,23 @@ function getTodayTimeString() {
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Normalizes date string coming from Google Sheets
+ */
+function normalizeDateString(val) {
+  if (!val) return "";
+  let s = String(val).trim();
+  if (s.startsWith("'")) s = s.substring(1);
+  if (s.includes("GMT") || s.includes("Standard Time") || s.includes("UTC")) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return day + "-" + month + "-" + year;
+    }
+  }
+  return s;
 }

@@ -80,6 +80,7 @@ export function printAttendanceReport(title: string, records: AttendanceRecord[]
           <thead>
             <tr>
               <th>Date</th>
+              <th>Time</th>
               <th>Student ID</th>
               <th>Name</th>
               <th>Course</th>
@@ -93,6 +94,7 @@ export function printAttendanceReport(title: string, records: AttendanceRecord[]
                 (r) => `
               <tr>
                 <td>${r.date}</td>
+                <td>${r.time || "-"}</td>
                 <td>${r.studentId}</td>
                 <td>${r.studentName || "N/A"}</td>
                 <td>${r.course || "N/A"}</td>
