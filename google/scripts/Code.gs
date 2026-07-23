@@ -134,10 +134,10 @@ function handleSaveStudent(ss, data) {
 }
 
 /**
- * Record attendance for student (Present = 1)
+ * Record attendance for student in matrix format
  */
 function handleSaveAttendance(ss, data) {
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Name", "Phone Number", "Course"]);
   const dateStr = data.date || getTodayDateString();
   const timeStr = data.time || getTodayTimeString();
   const studentId = data.studentId;
@@ -159,23 +159,45 @@ function handleSaveAttendance(ss, data) {
     return jsonResponse({ success: false, error: "Student not found in database." });
   }
 
-  const rows = attSheet.getDataRange().getDisplayValues();
+  // Find or create date column
+  const lastCol = attSheet.getLastColumn() || 3;
+  const headers = attSheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+  let colIndex = headers.indexOf(dateStr);
+  if (colIndex === -1) {
+    colIndex = headers.length;
+    attSheet.getRange(1, colIndex + 1).setValue("'" + dateStr);
+    attSheet.getRange(1, colIndex + 1).setFontWeight("bold");
+  }
 
-  // Prevent duplicate entry for today
+  // Find or create student row based on Phone Number (unique identifier)
+  const rows = attSheet.getDataRange().getDisplayValues();
+  let rowIndex = -1;
   for (let i = 1; i < rows.length; i++) {
-    const rowDate = normalizeDateString(rows[i][0]);
-    const rowId = String(rows[i][2]).trim(); // Student ID is index 2
-    if (rowDate === dateStr && rowId === studentId) {
-      return jsonResponse({
-        success: false,
-        alreadyMarked: true,
-        message: "Attendance already marked."
-      });
+    if (String(rows[i][1]).trim() === student.phone) {
+      rowIndex = i;
+      break;
     }
   }
 
-  // Insert attendance record
-  attSheet.appendRow(["'" + dateStr, "'" + timeStr, studentId, student.name, student.phone, student.course, student.batch, 1]);
+  if (rowIndex === -1) {
+    rowIndex = rows.length;
+    attSheet.getRange(rowIndex + 1, 1).setValue(student.name);
+    attSheet.getRange(rowIndex + 1, 2).setValue("'" + student.phone);
+    attSheet.getRange(rowIndex + 1, 3).setValue(student.course);
+  }
+
+  // Check if already marked
+  const existingVal = attSheet.getRange(rowIndex + 1, colIndex + 1).getDisplayValue();
+  if (existingVal && existingVal !== "A") {
+    return jsonResponse({
+      success: false,
+      alreadyMarked: true,
+      message: "Attendance already marked."
+    });
+  }
+
+  // Mark present (store time)
+  attSheet.getRange(rowIndex + 1, colIndex + 1).setValue("'" + timeStr);
 
   // Recalculate percentage
   recalculateAttendancePercentage(ss, studentId);
@@ -187,27 +209,48 @@ function handleSaveAttendance(ss, data) {
 }
 
 /**
- * Generate attendance (Present = 0) for students who were not scanned today
+ * Generate attendance (Absent = "A") for students who were not scanned today
  */
 function handleGenerateAbsentees(ss, data) {
-  const students = fetchAllStudents(ss);
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Name", "Phone Number", "Course"]);
   const dateStr = data.date || getTodayDateString();
-  const timeStr = "-"; // Not applicable for absentees generated automatically
+  const students = fetchAllStudents(ss);
 
-  const rows = attSheet.getDataRange().getDisplayValues();
-  const existingTodayIds = new Set();
-
-  for (let i = 1; i < rows.length; i++) {
-    if (normalizeDateString(rows[i][0]) === dateStr) {
-      existingTodayIds.add(String(rows[i][2]).trim()); // Student ID is index 2
-    }
+  // Ensure date column exists
+  const lastCol = attSheet.getLastColumn() || 3;
+  const headers = attSheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+  let colIndex = headers.indexOf(dateStr);
+  if (colIndex === -1) {
+    colIndex = headers.length;
+    attSheet.getRange(1, colIndex + 1).setValue("'" + dateStr);
+    attSheet.getRange(1, colIndex + 1).setFontWeight("bold");
   }
 
+  const rows = attSheet.getDataRange().getDisplayValues();
   let absenteesCount = 0;
+
+  // Add missing students and mark absent
   students.forEach(function(student) {
-    if (!existingTodayIds.has(student.studentId)) {
-      attSheet.appendRow(["'" + dateStr, "'" + timeStr, student.studentId, student.name, student.phone, student.course, student.batch, 0]);
+    let rowIndex = -1;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][1]).trim() === student.phone) {
+        rowIndex = i;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      rowIndex = attSheet.getLastRow();
+      attSheet.getRange(rowIndex + 1, 1).setValue(student.name);
+      attSheet.getRange(rowIndex + 1, 2).setValue("'" + student.phone);
+      attSheet.getRange(rowIndex + 1, 3).setValue(student.course);
+      // Update local array to mimic the newly added row
+      rows.push([student.name, student.phone, student.course]);
+    }
+
+    const cellVal = attSheet.getRange(rowIndex + 1, colIndex + 1).getDisplayValue();
+    if (!cellVal) {
+      attSheet.getRange(rowIndex + 1, colIndex + 1).setValue("A");
       absenteesCount++;
       recalculateAttendancePercentage(ss, student.studentId);
     }
@@ -224,20 +267,43 @@ function handleGenerateAbsentees(ss, data) {
  * Automatically calculates and updates attendance percentage in Students sheet
  */
 function recalculateAttendancePercentage(ss, studentId) {
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Name", "Phone Number", "Course"]);
   const studSheet = getOrCreateSheet(ss, "Students", [
     "Student ID", "Name", "Phone", "Course", "Batch", "Attendance Percentage", "Face Descriptor", "Created At"
   ]);
+
+  const students = fetchAllStudents(ss);
+  let student = null;
+  for (let s of students) {
+    if (s.studentId === studentId) {
+      student = s;
+      break;
+    }
+  }
+  if (!student) return 0;
 
   const attRows = attSheet.getDataRange().getDisplayValues();
   let totalDays = 0;
   let presentDays = 0;
 
+  // Find student row
+  let rowIndex = -1;
   for (let i = 1; i < attRows.length; i++) {
-    if (String(attRows[i][2]).trim() === studentId) {
-      totalDays++;
-      if (Number(attRows[i][7]) === 1) { // Present is index 7
-        presentDays++;
+    if (String(attRows[i][1]).trim() === student.phone) {
+      rowIndex = i;
+      break;
+    }
+  }
+
+  if (rowIndex !== -1) {
+    const rowData = attRows[rowIndex];
+    for (let j = 3; j < rowData.length; j++) {
+      const val = String(rowData[j]).trim();
+      if (val) {
+        totalDays++;
+        if (val !== "A") {
+          presentDays++;
+        }
       }
     }
   }
@@ -289,33 +355,49 @@ function fetchAllStudents(ss) {
 }
 
 /**
- * Fetch all attendance logs
+ * Fetch all attendance logs from matrix
  */
 function fetchAllAttendance(ss) {
-  const attSheet = getOrCreateSheet(ss, "Attendance", ["Date", "Time", "Student ID", "Name", "Phone Number", "Course", "Batch Number", "Present"]);
+  const attSheet = getOrCreateSheet(ss, "Attendance", ["Name", "Phone Number", "Course"]);
   const students = fetchAllStudents(ss);
   const studentMap = {};
   students.forEach(function(s) {
-    studentMap[s.studentId] = s;
+    studentMap[s.phone] = s;
   });
 
   const rows = attSheet.getDataRange().getDisplayValues();
   const list = [];
 
-  for (let i = 1; i < rows.length; i++) {
-    const sid = String(rows[i][2]); // Student ID is index 2
-    const student = studentMap[sid] || {};
+  if (rows.length < 2 || rows[0].length < 4) {
+    return list;
+  }
 
-    list.push({
-      date: normalizeDateString(rows[i][0]),
-      time: String(rows[i][1]).replace(/^'/, ''),
-      studentId: sid,
-      studentName: String(rows[i][3]) || student.name || "Unknown",
-      phone: String(rows[i][4]) || student.phone || "",
-      course: String(rows[i][5]) || student.course || "",
-      batch: String(rows[i][6]) || student.batch || "",
-      present: Number(rows[i][7])
-    });
+  const headers = rows[0];
+
+  for (let i = 1; i < rows.length; i++) {
+    const phone = String(rows[i][1]).trim();
+    const student = studentMap[phone] || {};
+
+    for (let j = 3; j < headers.length; j++) {
+      const dateStr = normalizeDateString(headers[j]);
+      const cellVal = String(rows[i][j]).trim();
+
+      if (cellVal) {
+        const present = cellVal === "A" ? 0 : 1;
+        const timeVal = cellVal === "A" ? "-" : cellVal.replace(/^'/, '');
+
+        list.push({
+          date: dateStr,
+          time: timeVal,
+          studentId: student.studentId || "Unknown",
+          studentName: String(rows[i][0]) || student.name || "Unknown",
+          phone: phone,
+          course: String(rows[i][2]) || student.course || "",
+          batch: student.batch || "",
+          present: present
+        });
+      }
+    }
   }
 
   return list;
